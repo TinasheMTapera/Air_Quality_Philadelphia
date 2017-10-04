@@ -1,0 +1,150 @@
+---
+title: "Final Project"
+author: "Tinashe M. Tapera"
+date: "23 August 2016"
+output: word_document
+---
+
+#Reading in and Cleaning Data
+First, we must create the data frame for deaths in PA. All these counts were copied from Philadelphia.gov's Vital Statistics page (http://www.phila.gov/health/commissioner/VitalStatistics.html)
+
+```{r packages, include = FALSE}
+library(foreign)
+library(ggplot2)
+library(dplyr)
+```
+
+```{r creating deaths dataframe}
+Year = c(1990:2012)
+Total_Deaths = c(586, 640, 580, 652, 632, 615, 638, 570, 637, 666, 674, 603, 657, 578, 586, 565, 588, 590, 588, 615, 548, 611, 639)
+
+d.rate = cbind(Year, Total_Deaths, row.names(NULL))
+```
+
+Plotting the change in deaths over the years:
+```{r plot 1}
+plot(d.rate, type = 'b', main = "Reported Deaths in Philadelphia:\nChronic Lower Respiratory Diseases")
+lines(lowess(d.rate))
+```
+
+From this plot it's not entirely clear what the relationship between AQ days (in our previous plots) and deaths from respiratory diseases, such as asthma, could be.
+
+Let's take a look at the data from the individual AQ monitors.
+
+```{r collecting monitor data}
+
+fetch.data = function(wd){
+# this function takes in a folder's path as an argument and reads in all the csv files within the folder
+  data = NULL
+  setwd(wd)
+  fnames = list.files(wd, pattern = ".csv") #list the names of csv's
+  
+  for(i in 1:length(fnames)){ #loop through the names and read in
+    temp = read.csv(fnames[i], header = TRUE)
+    data = rbind(data, temp)
+  }
+  
+  return(data)
+}
+
+so2 = fetch.data("~/Dropbox/Drexel U/History/Civic Field School/Scripts/Sulphur")
+pm10 = fetch.data("~/Dropbox/Drexel U/History/Civic Field School/Scripts/PM10")
+pm2.5 = fetch.data("~/Dropbox/Drexel U/History/Civic Field School/Scripts/PM2.5")
+ozone = fetch.data("~/Dropbox/Drexel U/History/Civic Field School/Scripts/Ozone")
+no2 = fetch.data("~/Dropbox/Drexel U/History/Civic Field School/Scripts/NO2")
+pb = fetch.data("~/Dropbox/Drexel U/History/Civic Field School/Scripts/Lead")
+co = fetch.data("~/Dropbox/Drexel U/History/Civic Field School/Scripts/CO")
+
+#some monitors have county's data outside of philadelphia
+str(so2)
+str(pm10)
+str(pm2.5)
+str(ozone)
+str(no2) #this
+str(pb)
+str(co) #and this
+
+no2 = no2[which(no2$COUNTY == "Philadelphia"),]
+co = co[which(co$COUNTY == "Philadelphia"),]
+str(no2)
+str(co)
+```
+
+#Investigations
+
+Apparently, AQI index for the day is calculated from the highest AQI of all the measurements:
+"The AQI is determined by the pollutant with the highest index.  For example, if the PM2.5 AQI is 125, the PM10 AQI is 50, SO2 is 30, NOx is 50, and all other pollutants are less than 125, then the AQI is 125---determined ONLY by the concentration of PM2.5."
+
+This to me has always seemed iffy. Let's investigate, first by seeing if we can visualise the AQI for all of these dates. In the data, each pollutant already has a daily max concentration and an associated AQI value. The problem is that not every date is represented in each data set (missing values). In addition, there are raw measures from separate monitors.
+
+##Visualising AQI Days Over Time
+
+Lets create a data frame with all of the data, lengthwise, factoring the substance measured.
+
+```{r visualise AQI days}
+so2$Substance = as.factor("SO2")
+names(so2)[4] = "Concentration"
+pm10$Substance = as.factor("PM10")
+names(pm10)[4] = "Concentration"
+pm2.5$Substance = as.factor("PM2.5")
+names(pm2.5)[4] = "Concentration"
+ozone$Substance = as.factor("Ozone")
+names(ozone)[4] = "Concentration"
+no2$Substance = as.factor("NO2")
+names(no2)[4] = "Concentration"
+pb$Substance = as.factor("Pb")
+names(pb)[4] = "Concentration"
+co$Substance = as.factor("CO")
+names(co)[4] = "Concentration"
+
+df = rbind(so2,pm10,pm2.5,ozone,no2,pb,co)
+
+dim(df)
+df$Date = as.Date(df$Date, format = "%m/%d/%Y")
+df$DAILY_AQI_VALUE = as.numeric(df$DAILY_AQI_VALUE)
+
+ggplot(data = df)+
+  geom_line(aes(as.Date(Date, format = "%m/%d/%Y"),DAILY_AQI_VALUE, group = Substance, colour = Substance), alpha = 0.5)+ scale_x_date(date_breaks = "10 years") + xlab("Date") + ylab("Daily AQI Value") + ggtitle("AQI of All Substances Over Time")
+
+ggplot(data = df)+
+  geom_smooth(aes(as.Date(Date, format = "%m/%d/%Y"),DAILY_AQI_VALUE, group = Substance, colour = Substance), alpha = 0.5, size = 2, weight = 3)+ scale_x_date(date_breaks = "10 years") + xlab("Date") + ylab("Daily AQI Value") + ggtitle("Lowess Smoothed Model of AQI Over Time")
+  
+```
+
+AQI decreases for each substance over time. This indicates an increased air quality overall.
+
+Let's investigate the clustering of days; perhaps this method will be more representative of the AQI day.
+
+#```{r clustering}
+#
+#dates = levels(so2$Date)
+#so2_clust = NULL
+#for(i in 1:length(dates)){
+#  temp = so2[which(so2$Date == dates[i]),]
+#  temp$max = max(temp$DAILY_AQI_VALUE)
+  #temp$mean = mean(temp$Concentration)
+  #
+  #so2_clust = rbind(so2_clust,temp[1,])
+#}
+#
+#clust_stuff = function(x){
+#dates = levels(x$Date)
+#x_clust = NULL
+#for(i in 1:length(dates)){
+#  temp = x[which(x$Date == dates[i]),]
+#  temp$max = max(temp$DAILY_AQI_VALUE)
+#  temp$mean = mean(temp$Concentration)
+#  
+#  x_clust = rbind(x_clust,temp[1,])
+#}
+#return(x_clust)
+#}
+#
+#pm10_clust = clust_stuff(pm10)
+#pm2.5_clust = clust_stuff(pm2.5)
+#ozone_clust = clust_stuff(ozone)
+#no2_clust = clust_stuff(no2)
+#pb_clust = clust_stuff(pb)
+#co_clust = clust_stuff(co)
+
+#cluster_data

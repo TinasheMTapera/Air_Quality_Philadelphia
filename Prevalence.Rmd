@@ -1,0 +1,144 @@
+---
+title: "Changes in Asthma Prevalence Over Time"
+author: "Tinashe M. Tapera"
+date: "09 August 2016"
+output: word_document
+---
+Data Sources:
+**OpenDataPhilly.org**;
+**cdc.gov**
+
+#Introduction
+
+Following from [a previous analysis](http://theasthmafiles.org/content/air-quality-index-data-dive), the next goal is to understand *how asthma prevalence has changed over time*, and if this is related to Philadelphia's air quality index data.
+
+Data is available from multiple resources, however the CDC's datasets seemed the most appropriate and easiest to scrape. We can scrape data straight off the html using R's `xml` package.
+
+
+```{r web scraping}
+library(XML)
+url = "http://www.cdc.gov/asthma/brfss/99/lifetime/tableL1.htm"
+asthma1999 = readHTMLTable(url)
+
+urls = c("http://www.cdc.gov/asthma/brfss/99/lifetime/tableL1.htm","http://www.cdc.gov/asthma/brfss/00/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/01/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/02/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/03/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/04/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/05/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/06/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/07/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/08/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/09/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/2010/lifetime/tableL1.htm", "http://www.cdc.gov/asthma/brfss/2011/tablel1.htm", "http://www.cdc.gov/asthma/brfss/2012/tableL1.htm")
+
+year = 1999
+
+for(i in 1:length(urls)){
+  temp = as.data.frame(readHTMLTable(urls[i], header = TRUE))
+  assign(paste("asthma",year, sep = "_"), temp)
+  year = year+1
+}
+
+```
+
+The data sets came out a little bit untidy, but they can be cleaned up with application of a few multi-step functions.
+
+```{r cleaning up}
+library(dplyr)
+
+factor_to_numeric = function(column){
+  j = column
+  for(i in 1:length(j)){
+  j[i] = gsub(pattern = ",", x = j[i], replacement = "")  
+  }
+  
+  l = as.numeric(j)
+  
+  return(l)
+}
+
+tidy = function(x, year){
+  columns = colnames(x)
+  pattern = paste("BRFSS",year, sep = ".")
+  
+  for(i in 1:length(columns)){
+    temp = strsplit(names(x)[i],split = pattern)[[1]][2]
+    names(x)[names(x) == names(x)[i]] = temp
+  }
+  
+  x[,1] = as.factor(x[,1])
+  x$year = year
+  
+  names(x)[names(x) == 'x$year'] <- 'Year'
+  return(x)
+}
+
+a99 = tidy(asthma_1999,1999)
+a00 = tidy(asthma_2000,2000)
+a01 = tidy(asthma_2001,2001)
+a02 = tidy(asthma_2002,2002)
+a03 = tidy(asthma_2003,2003)
+a04 = tidy(asthma_2004,2004)
+a05 = tidy(asthma_2005,2005)
+a06 = tidy(asthma_2006,2006)
+a07 = tidy(asthma_2007,2007)
+a08 = tidy(asthma_2008,2008)
+a09 = tidy(asthma_2009,2009)
+a10 = tidy(asthma_2010,2010)
+a11 = tidy(asthma_2011,2011)
+a12 = tidy(asthma_2012,2012)
+
+a99 = cbind(a99[,c(1:3,length(names(a99)))])
+a00 = cbind(a00[,c(1:3,length(names(a00)))])
+a01 = cbind(a01[,c(1:3,length(names(a01)))])
+a02 = cbind(a02[,c(1:3,length(names(a02)))])
+a03 = cbind(a03[,c(1:3,length(names(a03)))])
+a04 = cbind(a04[,c(1:3,length(names(a04)))])
+a05 = cbind(a05[,c(1:3,length(names(a05)))])
+a06 = cbind(a06[,c(1:3,length(names(a06)))])
+a07 = cbind(a07[,c(1:3,length(names(a07)))])
+a08 = cbind(a08[,c(1:3,length(names(a08)))])
+a09 = cbind(a09[,c(1:3,length(names(a09)))])
+a10 = cbind(a10[,c(1:3,length(names(a10)))])
+a11 = cbind(a11[,c(1:3,length(names(a11)))])
+a12 = cbind(a12[,c(1:3,length(names(a12)))])
+
+
+full = rbind(a99,a00,a01,a02,a03,a04,a05,a06,a07,a08,a09,a10,a11,a12)
+
+full = full[-which(full$.State == "Territories"),]
+full = full[-which(full$.State == "State"),]
+full = full[-which(full$.State == "US Total"),]
+full = full[-which(full$.State == "U.S. Total**"),]
+
+x = as.numeric(levels(full$.Prevalence.percent.))[full$.Prevalence.percent.]
+full$.Prevalence.percent. = x
+
+full = full[,-2]
+pa = full[which(full$.State == "PA"),]
+
+
+```
+
+#Visualising Prevalence
+
+We can visualise the changes in asthma prevalence over time (Each line represents a state in the US)
+```{r visualising asthma prevalence, include = TRUE}
+library(ggplot2)
+ggplot(data=full,aes(x = full$year,y = full$.Prevalence.percent., group = full$.State, colour = full$.State))+geom_line(alpha = 0.5)+scale_fill_discrete(name = "State")+geom_point()+labs(x = "Year", y = "Asthmatic Percent of Adult Population", title="US Asthma Prevalence Over Time")+scale_x_continuous(labels = c("1999","2000","2001","2002","2003","2004","2005","2006","2007","2008","2009","2010","2011","2012"),breaks = unique(full$year))+theme(legend.position = "none")
+```
+
+
+Interestingly, the overall trend appears that the percentage of adults diagnosed with asthma has increased over the US since 1999.
+
+With respect to Pennsylvania:
+```{r visualising PA, include = TRUE}
+
+ggplot(data=pa,aes(x = pa$year,y = pa$.Prevalence.percent., group = pa$.State, colour = pa$.State))+geom_line(alpha = 0.5)+geom_point()+labs(x = "Year", y = "Asthmatic Percent of Adult Population", title="PA Asthma Prevalence Over Time")+scale_x_continuous(labels = c("1999","2000","2001","2002","2003","2004","2005","2006","2007","2008","2009","2010","2011","2012"),breaks = unique(pa$year))+theme(legend.position = "none")
+```
+
+
+There is certainly an increasing trend. 
+
+While this data does not specify the levels for Philadelphia, we can assume that this trend in PA may be somewhat representative of the population of Philadelphia. 
+
+Why would it be that despite Philadelphia's bad Air Quality days decreasing, the asthma prevalence may have gone up?
+
+Next investigations:
+
+1. The AQ monitors may have some telling evidence for this disparity. Understanding their locations and specific variable measures may inform us as to how air quality is gauged.
+
+2. According to [prior findings](http://theasthmafiles.org/content/lezs-london-bias-against-vehicles), there may be a bias against vehicles contributing to air pollution, when in fact there should be an increased interest in reducing carbon emissions starting at home. With this in mind, it may be beneficial to investigate changes in vehicle use and home energy consumption and see if they match the AQ days findings.
+
+3. Following this, it's possible that since the monitors are *outdoor* air quality monitors, that they are not capturing the AQ indeces in the home and hence their change is not representative of asthma prevalence. What data sets would better capture asthma prevalence from within the home?
